@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DTI计算器 - 家庭债务收入比计算</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background-color: #f5f7fa;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      background-color: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      max-width: 600px;
+      margin: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 1.5em;
+      color: #333;
+      text-align: center;
+    }
+    label {
+      display: block;
+      margin-top: 20px;
+      font-weight: bold;
+      font-size: 1em;
+    }
+    input[type="number"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 1em;
+      margin-top: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    button {
+      margin-top: 24px;
+      width: 100%;
+      padding: 14px;
+      font-size: 1em;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .result {
+      margin-top: 24px;
+      font-size: 1.1em;
+      text-align: center;
+    }
+    .formula {
+      margin-top: 30px;
+      padding: 15px;
+      background-color: #eef1f5;
+      border-left: 4px solid #007bff;
+      font-family: monospace;
+      font-size: 0.95em;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 10px;
+      }
+      .container {
+        padding: 16px;
+      }
+      h1 {
+        font-size: 1.25em;
+      }
+      input, button {
+        font-size: 1em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>家庭债务收入比（DTI）计算器</h1>
+
+    <label for="income">每月总收入（元）</label>
+    <input type="number" id="income" placeholder="请输入税前月收入">
+
+    <label for="debt">每月债务支出（元）</label>
+    <input type="number" id="debt" placeholder="请输入房贷、车贷、信用卡等月支出">
+
+    <button onclick="calculateDTI()">计算 DTI</button>
+
+    <div class="result" id="result"></div>
+
+    <div class="formula">
+      <strong>计算公式：</strong><br />
+      DTI = （每月债务支出 ÷ 每月总收入）× 100%<br />
+      <br />
+      例如：<br />
+      如果收入为 20000 元，债务为 7500 元，<br />
+      DTI = (7500 ÷ 20000) × 100% = 37.5%
+    </div>
+  </div>
+
+  <script>
+    function calculateDTI() {
+      const income = parseFloat(document.getElementById("income").value);
+      const debt = parseFloat(document.getElementById("debt").value);
+      const resultDiv = document.getElementById("result");
+
+      if (isNaN(income) || isNaN(debt) || income <= 0) {
+        resultDiv.innerHTML = "<span style='color:red'>请输入有效的收入和支出金额。</span>";
+        return;
+      }
+
+      const dti = (debt / income) * 100;
+      let level = '';
+
+      if (dti <= 36) {
+        level = '（安全）✅';
+      } else if (dti <= 43) {
+        level = '（可接受）⚠️';
+      } else if (dti <= 50) {
+        level = '（偏高）❗';
+      } else {
+        level = '（危险）🚨';
+      }
+
+      resultDiv.innerHTML = `您的 DTI 为 <strong>${dti.toFixed(2)}%</strong> ${level}`;
+    }
+  </script>
+</body>
+</html>
