@@ -1,0 +1,152 @@
+name: 📦 Build & Deploy DTI Calculator
+
+on:
+  push:
+    branches: [main]
+  # 手动触发选项
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '目标分支'
+        required: true
+        default: 'main'
+        type: choice
+        options:
+          - main
+      reason:
+        description: '手动触发原因'
+        required: true
+        default: '手动部署DTI计算器'
+        type: string
+
+jobs:
+  build-and-deploy:
+    name: 🏗️ Build & Deploy
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    steps:
+      - name: 📁 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏷️ Generate build info
+        id: meta
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          SHORT_SHA=${GITHUB_SHA::7}
+          IMAGE_TAG="dti-calculator:latest"
+
+          echo "timestamp=${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "🏷️ Building DTI Calculator - ${TIMESTAMP}-${SHORT_SHA}"
+
+      - name: 🐳 Build Docker image
+        run: |
+          echo "🐳 构建Docker镜像..."
+          docker build -t ${{ steps.meta.outputs.image_tag }} .
+          echo "✅ Docker镜像构建完成"
+
+      - name: 🚀 Deploy to Dokploy
+        env:
+          DOKPLOY_DOMAIN: deploy.bytesbeats.com
+          DOKPLOY_TOKEN: ${{ secrets.DOKPLOY_TOKEN }}
+          PROJECT_NAME: DTI-Calculator
+          PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && '0' || github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event_name == 'workflow_dispatch' && inputs.reason || github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event_name == 'workflow_dispatch' && github.actor || github.event.pull_request.user.login }}
+          TARGET_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.event.pull_request.base.ref }}
+          SOURCE_BRANCH: ${{ github.event_name == 'workflow_dispatch' && 'manual-trigger' || github.event.pull_request.head.ref }}
+          COMMIT_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.pull_request.merge_commit_sha }}
+          TRIGGER_TYPE: ${{ github.event_name }}
+          IMAGE_INFO: ${{ steps.meta.outputs.image_tag }}
+        run: |
+          # DTI计算器部署脚本
+
+          echo "🎯 DTI计算器部署通知"
+          echo "=============================="
+
+          if [[ "$TRIGGER_TYPE" == "workflow_dispatch" ]]; then
+            echo "📝 手动部署"
+            echo "原因: $PR_TITLE"
+            echo "操作者: $PR_AUTHOR"
+          else
+            echo "📦 PR #$PR_NUMBER 合并部署"
+            echo "标题: $PR_TITLE"
+            echo "作者: $PR_AUTHOR"
+            echo "源分支: $SOURCE_BRANCH"
+          fi
+
+          echo "目标分支: $TARGET_BRANCH"
+          echo "提交SHA: ${COMMIT_SHA::7}"
+          echo "镜像信息: $IMAGE_INFO"
+          echo "=============================="
+
+          # 参数验证
+          if [[ -z "$DOKPLOY_TOKEN" ]]; then
+            echo "❌ DOKPLOY_TOKEN 未配置"
+            exit 1
+          fi
+
+          # 获取应用ID
+          echo "🔍 查询应用ID..."
+          response=$(curl -s -w "\n%{http_code}" \
+            -X GET "https://${DOKPLOY_DOMAIN}/api/project.all" \
+            -H "accept: application/json" \
+            -H "x-api-key: ${DOKPLOY_TOKEN}")
+
+          response_body=$(echo "$response" | head -n -1)
+          http_code=$(echo "$response" | tail -n 1)
+
+          if [[ $http_code -ne 200 ]]; then
+            echo "❌ 查询失败, HTTP: $http_code"
+            exit 1
+          fi
+
+          app_id=$(echo "$response_body" | jq -r --arg name "$PROJECT_NAME" '
+            .[] | .applications[]? | select(.name == $name) | .applicationId' | head -n 1)
+
+          if [[ -z "$app_id" || "$app_id" == "null" ]]; then
+            echo "❌ 未找到应用: $PROJECT_NAME"
+            exit 1
+          fi
+
+          echo "✅ 应用ID: $app_id"
+
+          # 触发部署
+          echo "🚀 触发部署..."
+          deploy_response=$(curl -s -w "\n%{http_code}" \
+            -X POST "https://${DOKPLOY_DOMAIN}/api/application.deploy" \
+            -H "accept: application/json" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${DOKPLOY_TOKEN}" \
+            -d "{\"applicationId\": \"$app_id\"}")
+
+          deploy_body=$(echo "$deploy_response" | head -n -1)
+          deploy_code=$(echo "$deploy_response" | tail -n 1)
+
+          if [[ $deploy_code -ge 200 && $deploy_code -lt 300 ]]; then
+            echo "✅ 部署成功"
+            echo ""
+            echo "🎉 DTI计算器部署完成!"
+            echo "应用: $PROJECT_NAME"
+            echo "分支: $TARGET_BRANCH"
+            echo "镜像: $IMAGE_INFO"
+          else
+            echo "❌ 部署失败,HTTP: $deploy_code"
+            echo "响应: $deploy_body"
+            exit 1
+          fi
+
+      - name: 📊 Deployment summary
+        if: always()
+        run: |
+          echo "## 🚀 DTI计算器部署摘要" >> $GITHUB_STEP_SUMMARY
+          echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🏷️ 项目名称 | DTI Calculator |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🌿 目标分支 | ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.event.pull_request.base.ref }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🐳 镜像标签 | ${{ steps.meta.outputs.image_tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ⏰ 部署时间 | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| ✅ 整体状态 | 部署完成 |" >> $GITHUB_STEP_SUMMARY
